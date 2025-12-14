@@ -1,25 +1,29 @@
-{% extends "base.html" %}
-{% block content %}
-<h2>Your Dashboard</h2>
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Dashboard</title>
+</head>
+<body>
+    <h1>Dashboard for {{ session['username'] }}</h1>
+    <p><a href="{{ url_for('found') }}">Add Found Item</a> | <a href="{{ url_for('missing') }}">Report Missing Item</a> | <a href="{{ url_for('logout') }}">Logout</a></p>
 
-<h3>Found Items</h3>
-<ul>
+    <h2>Your Found Items</h2>
+    <ul>
     {% for item in user_found %}
+        <li>{{ item.name }} {% if item.image %}<img src="{{ url_for('static', filename=item.image) }}" width="50">{% endif %}</li>
+    {% else %}
+        <li>No items yet.</li>
+    {% endfor %}
+    </ul>
+
+    <h2>Your Missing Items</h2>
+    <ul>
+    {% for item in user_missing %}
         <li>{{ item.name }} - {{ item.description }}</li>
     {% else %}
-        <li>No items posted yet</li>
+        <li>No items yet.</li>
     {% endfor %}
-</ul>
-
-<h3>Claimed Items</h3>
-<ul>
-    {% for claim in claims %}
-        <li>Item ID: {{ claim.item_id }} - Claimed at: {{ claim.timestamp }}</li>
-    {% else %}
-        <li>No claimed items yet</li>
-    {% endfor %}
-</ul>
-
-<a href="{{ url_for('found') }}">Add Found Item</a>
-{% endblock %}
+    </ul>
+</body>
+</html>
 
