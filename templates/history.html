@@ -3,9 +3,14 @@
 <h2>Your Claimed Items</h2>
 {% if items %}
 <ul>
-    {% for item in items %}
-        <li>{{ item.item_name }}</li>
-    {% endfor %}
+{% for item in items %}
+    <li>
+        {{ item.item_name }}
+        {% if item.image %}
+            <img src="{{ url_for('static', filename='uploads/' + item.image) }}" width="100">
+        {% endif %}
+    </li>
+{% endfor %}
 </ul>
 {% else %}
 <p>You haven’t claimed any items yet.</p>
