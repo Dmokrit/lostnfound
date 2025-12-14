@@ -1,25 +1,17 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Submit Found Item</title>
-</head>
-<body>
-    <h1>Submit Found Item</h1>
-    <form method="POST" enctype="multipart/form-data">
-        Item Name: <input type="text" name="item"><br>
-        Image: <input type="file" name="image"><br>
-        <input type="submit" value="Submit">
-    </form>
-    <p><a href="{{ url_for('dashboard') }}">Back to Dashboard</a></p>
+{% extends "base.html" %}
 
-    <h2>All Found Items</h2>
-    <ul>
-    {% for item in items %}
-        <li>{{ item.name }} {% if item.image %}<img src="{{ url_for('static', filename=item.image) }}" width="50">{% endif %}</li>
-    {% else %}
-        <li>No items yet.</li>
-    {% endfor %}
-    </ul>
-</body>
-</html>
+{% block content %}
+<h2>Add Found Item</h2>
+<form method="POST" class="mt-3">
+    <div class="mb-3">
+        <label for="name" class="form-label">Item Name</label>
+        <input type="text" class="form-control" id="name" name="name" required>
+    </div>
+    <div class="mb-3">
+        <label for="description" class="form-label">Description</label>
+        <textarea class="form-control" id="description" name="description"></textarea>
+    </div>
+    <button type="submit" class="btn btn-primary">Submit Found Item</button>
+</form>
+{% endblock %}
 

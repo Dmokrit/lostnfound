@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2 class="mb-4">Welcome to Lost & Found System</h2>
+
+<div class="row">
+    <div class="col-md-6 mb-3">
+        <h4>Found Items</h4>
+        <ul class="list-group">
+            {% for item in found_items %}
+            <li class="list-group-item">
+                <strong>{{ item.name }}</strong> - {{ item.description }} (Added by: {{ item.user }})
+            </li>
+            {% else %}
+            <li class="list-group-item">No found items yet.</li>
+            {% endfor %}
+        </ul>
+    </div>
+
+    <div class="col-md-6 mb-3">
+        <h4>Missing Items</h4>
+        <ul class="list-group">
+            {% for item in missing_items %}
+            <li class="list-group-item">
+                <strong>{{ item.name }}</strong> - {{ item.description }} (Reported by: {{ item.user }})
+            </li>
+            {% else %}
+            <li class="list-group-item">No missing items yet.</li>
+            {% endfor %}
+        </ul>
+    </div>
+</div>
+{% endblock %}
+

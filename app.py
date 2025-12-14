@@ -1,32 +1,47 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, session
-import os
-from werkzeug.utils import secure_filename
+from flask import Flask, render_template, request, redirect, url_for, session, flash
 
 app = Flask(__name__)
-app.secret_key = "your_secret_key"
+app.secret_key = "your_secret_key_here"  # Needed for session and flash messages
 
-# In-memory data stores
-users = []  # {username, password}
-found_items = []  # {name, image, submitted_by}
-missing_items = []  # {name, description, submitted_by}
+# Sample in-memory user storage (replace with DB later if needed)
+users = [
+    {"username": "admin", "password": "admin123"},
+    {"username": "user1", "password": "pass123"}
+]
 
-UPLOAD_FOLDER = os.path.join(app.root_path, 'static/uploads')
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
-
-
-def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
-
-
-# -------------------- ROUTES -------------------- #
+# Sample in-memory lost and found items
+found_items = []
+missing_items = []
 
 @app.route('/')
-def index():
-    return render_template('index.html', found_items=found_items, missing_items=missing_items)
+def home():
+    return render_template('home.html', found_items=found_items, missing_items=missing_items)
 
+# ---------------- LOGIN ----------------
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
 
+        # Check for empty fields
+        if not username or not password:
+            flash("Please enter both username and password.", "error")
+            return redirect(url_for('login'))
+
+        # Validate credentials
+        user = next((u for u in users if u['username'] == username and u['password'] == password), None)
+        if user:
+            session['username'] = username
+            flash("Logged in successfully!", "success")
+            return redirect(url_for('dashboard'))
+        else:
+            flash("Invalid username or password.", "error")
+            return redirect(url_for('login'))
+
+    return render_template('login.html')
+
+# ---------------- SIGNUP ----------------
 @app.route('/signup', methods=['GET', 'POST'])
 def signup():
     if request.method == 'POST':
@@ -34,115 +49,80 @@ def signup():
         password = request.form.get('password')
 
         if not username or not password:
-            flash("Username and password are required.", "error")
+            flash("Please enter both username and password.", "error")
             return redirect(url_for('signup'))
 
+        # Check if username exists
         if any(u['username'] == username for u in users):
             flash("Username already exists.", "error")
             return redirect(url_for('signup'))
 
-        users.append({'username': username, 'password': password})
-        flash("Signup successful! Please login.", "success")
+        users.append({"username": username, "password": password})
+        flash("Account created successfully! Please login.", "success")
         return redirect(url_for('login'))
 
     return render_template('signup.html')
 
+# ---------------- DASHBOARD ----------------
+@app.route('/dashboard')
+def dashboard():
+    if 'username' not in session:
+        flash("Please login first.", "error")
+        return redirect(url_for('login'))
 
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    if request.method == 'POST':
-        username = request.form.get('username')
-        password = request.form.get('password')
+    return render_template('dashboard.html', username=session['username'],
+                           found_items=found_items, missing_items=missing_items)
 
-        user = next((u for u in users if u['username'] == username and u['password'] == password), None)
-        if user:
-            session['username'] = username
-            flash("Logged in successfully.", "success")
-            return redirect(url_for('dashboard'))
-        else:
-            flash("Invalid credentials.", "error")
-            return redirect(url_for('login'))
-
-    return render_template('login.html')
-
-
+# ---------------- LOGOUT ----------------
 @app.route('/logout')
 def logout():
     session.pop('username', None)
     flash("Logged out successfully.", "success")
-    return redirect(url_for('index'))
+    return redirect(url_for('login'))
 
-
-@app.route('/dashboard')
-def dashboard():
-    if 'username' not in session:
-        flash("You need to login first.", "error")
-        return redirect(url_for('login'))
-
-    user_found = [item for item in found_items if item['submitted_by'] == session['username']]
-    user_missing = [item for item in missing_items if item['submitted_by'] == session['username']]
-
-    return render_template('dashboard.html', user_found=user_found, user_missing=user_missing)
-
-
+# ---------------- ADD FOUND ITEM ----------------
 @app.route('/found', methods=['GET', 'POST'])
 def found():
     if 'username' not in session:
-        flash("You need to login first.", "error")
+        flash("Please login first.", "error")
         return redirect(url_for('login'))
 
     if request.method == 'POST':
-        item_name = request.form.get('item')
-        image = request.files.get('image')
+        name = request.form.get('name')
+        description = request.form.get('description')
 
-        if not item_name:
+        if not name:
             flash("Item name is required.", "error")
             return redirect(url_for('found'))
 
-        image_filename = None
-        if image and allowed_file(image.filename):
-            filename = secure_filename(image.filename)
-            image.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-            image_filename = os.path.join('uploads', filename)
+        found_items.append({"name": name, "description": description, "user": session['username']})
+        flash("Found item submitted successfully.", "success")
+        return redirect(url_for('dashboard'))
 
-        found_items.append({
-            'name': item_name,
-            'image': image_filename,
-            'submitted_by': session['username']
-        })
+    return render_template('found.html')
 
-        flash("Item submitted successfully!", "success")
-        return redirect(url_for('found'))
-
-    return render_template('found.html', items=found_items)
-
-
+# ---------------- ADD MISSING ITEM ----------------
 @app.route('/missing', methods=['GET', 'POST'])
 def missing():
     if 'username' not in session:
-        flash("You need to login first.", "error")
+        flash("Please login first.", "error")
         return redirect(url_for('login'))
 
     if request.method == 'POST':
-        item_name = request.form.get('item')
+        name = request.form.get('name')
         description = request.form.get('description')
 
-        if not item_name or not description:
-            flash("Both name and description are required.", "error")
+        if not name:
+            flash("Item name is required.", "error")
             return redirect(url_for('missing'))
 
-        missing_items.append({
-            'name': item_name,
-            'description': description,
-            'submitted_by': session['username']
-        })
+        missing_items.append({"name": name, "description": description, "user": session['username']})
+        flash("Missing item reported successfully.", "success")
+        return redirect(url_for('dashboard'))
 
-        flash("Missing item reported successfully!", "success")
-        return redirect(url_for('missing'))
+    return render_template('missing.html')
 
-    return render_template('missing.html', items=missing_items)
-
-
+# ---------------- RUN APP ----------------
 if __name__ == '__main__':
     app.run(debug=True)
 

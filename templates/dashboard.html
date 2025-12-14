@@ -1,29 +1,33 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Dashboard</title>
-</head>
-<body>
-    <h1>Dashboard for {{ session['username'] }}</h1>
-    <p><a href="{{ url_for('found') }}">Add Found Item</a> | <a href="{{ url_for('missing') }}">Report Missing Item</a> | <a href="{{ url_for('logout') }}">Logout</a></p>
+{% extends "base.html" %}
 
-    <h2>Your Found Items</h2>
-    <ul>
-    {% for item in user_found %}
-        <li>{{ item.name }} {% if item.image %}<img src="{{ url_for('static', filename=item.image) }}" width="50">{% endif %}</li>
-    {% else %}
-        <li>No items yet.</li>
-    {% endfor %}
-    </ul>
+{% block content %}
+<h2>Dashboard - Welcome {{ username }}</h2>
 
-    <h2>Your Missing Items</h2>
-    <ul>
-    {% for item in user_missing %}
-        <li>{{ item.name }} - {{ item.description }}</li>
+<div class="mb-3">
+    <a href="{{ url_for('found') }}" class="btn btn-primary">Add Found Item</a>
+    <a href="{{ url_for('missing') }}" class="btn btn-warning">Report Missing Item</a>
+</div>
+
+<h4>Found Items</h4>
+<ul class="list-group mb-3">
+    {% for item in found_items %}
+    <li class="list-group-item">
+        <strong>{{ item.name }}</strong> - {{ item.description }} (Added by: {{ item.user }})
+    </li>
     {% else %}
-        <li>No items yet.</li>
+    <li class="list-group-item">No found items yet.</li>
     {% endfor %}
-    </ul>
-</body>
-</html>
+</ul>
+
+<h4>Missing Items</h4>
+<ul class="list-group mb-3">
+    {% for item in missing_items %}
+    <li class="list-group-item">
+        <strong>{{ item.name }}</strong> - {{ item.description }} (Reported by: {{ item.user }})
+    </li>
+    {% else %}
+    <li class="list-group-item">No missing items yet.</li>
+    {% endfor %}
+</ul>
+{% endblock %}
 
