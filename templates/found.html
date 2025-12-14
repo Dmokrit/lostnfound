@@ -7,7 +7,7 @@
 </form>
 <ul>
     {% for item in items %}
-        <li>{{ item }} - <a href="{{ url_for('claim', item=item) }}">Claim</a></li>
+        <li>{{ item.name }} - <a href="{{ url_for('claim', item_id=item.id) }}">Claim</a></li>
     {% endfor %}
 </ul>
 {% endblock %}

@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Your Claimed Items</h2>
+{% if items %}
+<ul>
+    {% for item in items %}
+        <li>{{ item.item_name }}</li>
+    {% endfor %}
+</ul>
+{% else %}
+<p>You haven’t claimed any items yet.</p>
+{% endif %}
+{% endblock %}
+

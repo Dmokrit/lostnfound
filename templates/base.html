@@ -11,6 +11,7 @@
         {% if session.get('user') %}
             <a href="{{ url_for('missing') }}">Missing Items</a>
             <a href="{{ url_for('found') }}">Found Items</a>
+            <a href="{{ url_for('history') }}">Claimed Items</a>
             <a href="{{ url_for('logout') }}">Logout</a>
         {% else %}
             <a href="{{ url_for('login') }}">Login</a>
