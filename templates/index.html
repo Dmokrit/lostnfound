@@ -1,34 +1,35 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Lost and Found</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-</head>
-<body>
-    <h1>Welcome to Lost & Found System</h1>
-    {% if 'username' in session %}
-        <p>Hello, {{ session['username'] }} | <a href="{{ url_for('logout') }}">Logout</a> | <a href="{{ url_for('dashboard') }}">Dashboard</a></p>
-    {% else %}
-        <a href="{{ url_for('login') }}">Login</a> | <a href="{{ url_for('signup') }}">Sign Up</a>
-    {% endif %}
+{% extends "base.html" %}
+{% block content %}
+<h1 class="mb-4">Lost and Found Items</h1>
 
-    <h2>Found Items</h2>
-    <ul>
+<h3>Found Items</h3>
+<div class="row">
     {% for item in found_items %}
-        <li>{{ item.name }} {% if item.image %}<img src="{{ url_for('static', filename=item.image) }}" width="50">{% endif %}</li>
-    {% else %}
-        <li>No items found.</li>
+        <div class="col-md-4 mb-3">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">{{ item.name }}</h5>
+                    <p class="card-text">{{ item.description }}</p>
+                    <small class="text-muted">Added on {{ item.created_at.strftime('%Y-%m-%d %H:%M') }}</small>
+                </div>
+            </div>
+        </div>
     {% endfor %}
-    </ul>
+</div>
 
-    <h2>Missing Items</h2>
-    <ul>
+<h3 class="mt-4">Missing Items</h3>
+<div class="row">
     {% for item in missing_items %}
-        <li>{{ item.name }} - {{ item.description }}</li>
-    {% else %}
-        <li>No missing items reported.</li>
+        <div class="col-md-4 mb-3">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">{{ item.name }}</h5>
+                    <p class="card-text">{{ item.description }}</p>
+                    <small class="text-muted">Added on {{ item.created_at.strftime('%Y-%m-%d %H:%M') }}</small>
+                </div>
+            </div>
+        </div>
     {% endfor %}
-    </ul>
-</body>
-</html>
+</div>
+{% endblock %}
 

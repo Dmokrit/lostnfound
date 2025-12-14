@@ -1,128 +1,135 @@
-from flask import Flask, render_template, request, redirect, url_for, session, flash
+from flask import Flask, render_template, request, redirect, url_for, flash
+from flask_sqlalchemy import SQLAlchemy
+from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
+from werkzeug.security import generate_password_hash, check_password_hash
+from datetime import datetime
+import os
 
 app = Flask(__name__)
-app.secret_key = "your_secret_key_here"  # Needed for session and flash messages
+app.secret_key = 'your_secret_key'
 
-# Sample in-memory user storage (replace with DB later if needed)
-users = [
-    {"username": "admin", "password": "admin123"},
-    {"username": "user1", "password": "pass123"}
-]
+# SQLite configuration
+basedir = os.path.abspath(os.path.dirname(__file__))
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'instance', 'lostnfound.db')
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-# Sample in-memory lost and found items
-found_items = []
-missing_items = []
+db = SQLAlchemy(app)
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = 'login'
+
+# ------------------ Models ------------------
+
+class User(db.Model, UserMixin):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(150), unique=True, nullable=False)
+    password = db.Column(db.String(200), nullable=False)
+
+class FoundItem(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(200), nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
+
+class MissingItem(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(200), nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
+
+# ------------------ Login Manager ------------------
+
+@login_manager.user_loader
+def load_user(user_id):
+    return User.query.get(int(user_id))
+
+# ------------------ Routes ------------------
 
 @app.route('/')
-def home():
-    return render_template('home.html', found_items=found_items, missing_items=missing_items)
+def index():
+    found_items = FoundItem.query.order_by(FoundItem.created_at.desc()).all()
+    missing_items = MissingItem.query.order_by(MissingItem.created_at.desc()).all()
+    return render_template('index.html', found_items=found_items, missing_items=missing_items)
 
-# ---------------- LOGIN ----------------
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    if request.method == 'POST':
-        username = request.form.get('username')
-        password = request.form.get('password')
-
-        # Check for empty fields
-        if not username or not password:
-            flash("Please enter both username and password.", "error")
-            return redirect(url_for('login'))
-
-        # Validate credentials
-        user = next((u for u in users if u['username'] == username and u['password'] == password), None)
-        if user:
-            session['username'] = username
-            flash("Logged in successfully!", "success")
-            return redirect(url_for('dashboard'))
-        else:
-            flash("Invalid username or password.", "error")
-            return redirect(url_for('login'))
-
-    return render_template('login.html')
-
-# ---------------- SIGNUP ----------------
 @app.route('/signup', methods=['GET', 'POST'])
 def signup():
     if request.method == 'POST':
-        username = request.form.get('username')
-        password = request.form.get('password')
-
-        if not username or not password:
-            flash("Please enter both username and password.", "error")
+        username = request.form['username']
+        password = request.form['password']
+        if User.query.filter_by(username=username).first():
+            flash("Username already exists.")
             return redirect(url_for('signup'))
 
-        # Check if username exists
-        if any(u['username'] == username for u in users):
-            flash("Username already exists.", "error")
-            return redirect(url_for('signup'))
-
-        users.append({"username": username, "password": password})
-        flash("Account created successfully! Please login.", "success")
+        hashed_password = generate_password_hash(password)
+        new_user = User(username=username, password=hashed_password)
+        db.session.add(new_user)
+        db.session.commit()
+        flash("Account created! Please login.")
         return redirect(url_for('login'))
-
     return render_template('signup.html')
 
-# ---------------- DASHBOARD ----------------
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+        user = User.query.filter_by(username=username).first()
+        if not user or not check_password_hash(user.password, password):
+            flash("Incorrect username or password.")
+            return redirect(url_for('login'))
+        login_user(user)
+        return redirect(url_for('dashboard'))
+    return render_template('login.html')
+
 @app.route('/dashboard')
+@login_required
 def dashboard():
-    if 'username' not in session:
-        flash("Please login first.", "error")
-        return redirect(url_for('login'))
+    user_found = FoundItem.query.filter_by(user_id=current_user.id).order_by(FoundItem.created_at.desc()).all()
+    user_missing = MissingItem.query.filter_by(user_id=current_user.id).order_by(MissingItem.created_at.desc()).all()
+    return render_template('dashboard.html', user_found=user_found, user_missing=user_missing)
 
-    return render_template('dashboard.html', username=session['username'],
-                           found_items=found_items, missing_items=missing_items)
-
-# ---------------- LOGOUT ----------------
 @app.route('/logout')
+@login_required
 def logout():
-    session.pop('username', None)
-    flash("Logged out successfully.", "success")
+    logout_user()
+    flash("You have been logged out.")
     return redirect(url_for('login'))
 
-# ---------------- ADD FOUND ITEM ----------------
-@app.route('/found', methods=['GET', 'POST'])
-def found():
-    if 'username' not in session:
-        flash("Please login first.", "error")
-        return redirect(url_for('login'))
-
+@app.route('/add_found', methods=['GET', 'POST'])
+@login_required
+def add_found():
     if request.method == 'POST':
-        name = request.form.get('name')
-        description = request.form.get('description')
-
-        if not name:
-            flash("Item name is required.", "error")
-            return redirect(url_for('found'))
-
-        found_items.append({"name": name, "description": description, "user": session['username']})
-        flash("Found item submitted successfully.", "success")
+        name = request.form['name']
+        description = request.form['description']
+        item = FoundItem(name=name, description=description, user_id=current_user.id)
+        db.session.add(item)
+        db.session.commit()
+        flash("Found item added!")
         return redirect(url_for('dashboard'))
+    return render_template('add_found.html')
 
-    return render_template('found.html')
-
-# ---------------- ADD MISSING ITEM ----------------
-@app.route('/missing', methods=['GET', 'POST'])
-def missing():
-    if 'username' not in session:
-        flash("Please login first.", "error")
-        return redirect(url_for('login'))
-
+@app.route('/add_missing', methods=['GET', 'POST'])
+@login_required
+def add_missing():
     if request.method == 'POST':
-        name = request.form.get('name')
-        description = request.form.get('description')
-
-        if not name:
-            flash("Item name is required.", "error")
-            return redirect(url_for('missing'))
-
-        missing_items.append({"name": name, "description": description, "user": session['username']})
-        flash("Missing item reported successfully.", "success")
+        name = request.form['name']
+        description = request.form['description']
+        item = MissingItem(name=name, description=description, user_id=current_user.id)
+        db.session.add(item)
+        db.session.commit()
+        flash("Missing item added!")
         return redirect(url_for('dashboard'))
+    return render_template('add_missing.html')
 
-    return render_template('missing.html')
+# ------------------ Run App ------------------
 
-# ---------------- RUN APP ----------------
 if __name__ == '__main__':
+    # Ensure instance folder exists
+    os.makedirs(os.path.join(basedir, 'instance'), exist_ok=True)
+    # Create all tables
+    with app.app_context():
+        db.create_all()
     app.run(debug=True)
 
