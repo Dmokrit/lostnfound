@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Missing Items</h2>
+<form method="post">
+    <input type="text" name="item" placeholder="Item name" required>
+    <button type="submit">Submit</button>
+</form>
+<ul>
+    {% for item in items %}
+        <li>{{ item }}</li>
+    {% endfor %}
+</ul>
+{% endblock %}
+

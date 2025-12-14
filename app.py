@@ -1,116 +1,82 @@
-from flask import Flask, render_template, request, redirect, session, url_for, flash
-from werkzeug.utils import secure_filename
-import sqlite3, os, hashlib
+from flask import Flask, render_template, request, redirect, url_for, session
 
 app = Flask(__name__)
-app.secret_key = 'supersecretkey'
-UPLOAD_FOLDER = 'static/uploads'
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+app.secret_key = "supersecretkey"  # Change this in production
 
-def get_db():
-    conn = sqlite3.connect('database.db')
-    conn.row_factory = sqlite3.Row
-    return conn
+# In-memory storage (replace with DB for production)
+users = {}  # username: password
+missing_items = []
+found_items = []
 
-def init_db():
-    conn = get_db()
-    c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, username TEXT UNIQUE, password TEXT)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS lost (id INTEGER PRIMARY KEY, name TEXT, description TEXT, photo TEXT, user TEXT)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS found (id INTEGER PRIMARY KEY, name TEXT, description TEXT, photo TEXT, claimed INTEGER DEFAULT 0, claimed_by TEXT)''')
-    conn.commit()
-    conn.close()
+# Home
+@app.route("/")
+def home():
+    return render_template("home.html")
 
-init_db()
-
-def hash_password(password):
-    return hashlib.sha256(password.encode()).hexdigest()
-
-@app.route('/', methods=['GET', 'POST'])
-def login():
-    if request.method == 'POST':
-        username = request.form['username']
-        password = hash_password(request.form['password'])
-        conn = get_db()
-        c = conn.cursor()
-        c.execute('SELECT * FROM users WHERE username=? AND password=?', (username, password))
-        user = c.fetchone()
-        if user:
-            session['username'] = username
-            return redirect(url_for('dashboard'))
-        else:
-            flash("Invalid login!")
-    return render_template('index.html')
-
-@app.route('/signup', methods=['POST'])
+# Sign-Up
+@app.route("/signup", methods=["GET", "POST"])
 def signup():
-    username = request.form['username']
-    password = hash_password(request.form['password'])
-    conn = get_db()
-    c = conn.cursor()
-    try:
-        c.execute('INSERT INTO users (username, password) VALUES (?,?)', (username,password))
-        conn.commit()
-        flash("Signup successful! Login now.")
-    except sqlite3.IntegrityError:
-        flash("Username already exists!")
-    return redirect(url_for('login'))
+    if request.method == "POST":
+        username = request.form.get("username")
+        password = request.form.get("password")
+        if username in users:
+            return render_template("signup.html", error="Username already exists")
+        users[username] = password
+        session["user"] = username
+        return redirect(url_for("home"))
+    return render_template("signup.html")
 
-@app.route('/dashboard')
-def dashboard():
-    if 'username' not in session:
-        return redirect(url_for('login'))
-    conn = get_db()
-    lost_items = conn.execute('SELECT * FROM lost').fetchall()
-    found_items = conn.execute('SELECT * FROM found').fetchall()
-    return render_template('dashboard.html', lost_items=lost_items, found_items=found_items, username=session['username'])
+# Login
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        username = request.form.get("username")
+        password = request.form.get("password")
+        if username in users and users[username] == password:
+            session["user"] = username
+            return redirect(url_for("home"))
+        else:
+            return render_template("login.html", error="Invalid credentials")
+    return render_template("login.html")
 
-@app.route('/logout')
+# Logout
+@app.route("/logout")
 def logout():
-    session.pop('username', None)
-    return redirect(url_for('login'))
+    session.pop("user", None)
+    return redirect(url_for("home"))
 
-@app.route('/report_lost', methods=['POST'])
-def report_lost():
-    if 'username' not in session:
-        return redirect(url_for('login'))
-    name = request.form['name']
-    desc = request.form['description']
-    file = request.files['photo']
-    filename = secure_filename(file.filename) if file else None
-    if filename:
-        file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-    conn = get_db()
-    conn.execute('INSERT INTO lost (name, description, photo, user) VALUES (?,?,?,?)',
-                 (name, desc, filename, session['username']))
-    conn.commit()
-    return redirect(url_for('dashboard'))
+# Submit missing item
+@app.route("/missing", methods=["GET", "POST"])
+def missing():
+    if "user" not in session:
+        return redirect(url_for("login"))
+    if request.method == "POST":
+        item = request.form.get("item")
+        missing_items.append(item)
+        return redirect(url_for("missing"))
+    return render_template("missing.html", items=missing_items)
 
-@app.route('/report_found', methods=['POST'])
-def report_found():
-    if 'username' not in session:
-        return redirect(url_for('login'))
-    name = request.form['name']
-    desc = request.form['description']
-    file = request.files['photo']
-    filename = secure_filename(file.filename) if file else None
-    if filename:
-        file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-    conn = get_db()
-    conn.execute('INSERT INTO found (name, description, photo) VALUES (?,?,?)', (name, desc, filename))
-    conn.commit()
-    return redirect(url_for('dashboard'))
+# Submit found item
+@app.route("/found", methods=["GET", "POST"])
+def found():
+    if "user" not in session:
+        return redirect(url_for("login"))
+    if request.method == "POST":
+        item = request.form.get("item")
+        found_items.append(item)
+        return redirect(url_for("found"))
+    return render_template("found.html", items=found_items)
 
-@app.route('/claim/<int:item_id>')
-def claim(item_id):
-    if 'username' not in session:
-        return redirect(url_for('login'))
-    conn = get_db()
-    conn.execute('UPDATE found SET claimed=1, claimed_by=? WHERE id=?', (session['username'], item_id))
-    conn.commit()
-    return redirect(url_for('dashboard'))
+# Claim a found item
+@app.route("/claim/<item>")
+def claim(item):
+    if "user" not in session:
+        return redirect(url_for("login"))
+    if item in found_items:
+        found_items.remove(item)
+        return redirect(url_for("found"))
+    return "Item not found"
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     app.run(debug=True)
 
