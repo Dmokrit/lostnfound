@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Dashboard - Lost & Found</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+</head>
+<body class="container mt-4">
+
+<nav class="mb-4">
+    <span class="me-3">Logged in as {{ username }}</span>
+    <a href="{{ url_for('logout') }}" class="btn btn-warning btn-sm">Logout</a>
+</nav>
+
+<div class="row">
+    <!-- Lost Items Form -->
+    <div class="col-md-6">
+        <h3>Report Lost Item</h3>
+        <form method="POST" action="{{ url_for('report_lost') }}" enctype="multipart/form-data">
+            <input type="text" name="name" class="form-control mb-2" placeholder="Item Name" required>
+            <textarea name="description" class="form-control mb-2" placeholder="Description" required></textarea>
+            <input type="file" name="photo" class="form-control mb-2" accept="image/*">
+            <button type="submit" class="btn btn-primary mb-3">Submit Lost Item</button>
+        </form>
+
+        <h4>All Lost Items</h4>
+        {% for item in lost_items %}
+            <div class="card mb-2 p-2">
+                <strong>{{ item['name'] }}</strong> <br>
+                <p>{{ item['description'] }}</p>
+                {% if item['photo'] %}
+                    <img src="{{ url_for('static', filename='uploads/'+item['photo']) }}" width="200">
+                {% endif %}
+                <small>Reported by {{ item['user'] }}</small>
+            </div>
+        {% endfor %}
+    </div>
+
+    <!-- Found Items Form -->
+    <div class="col-md-6">
+        <h3>Report Found Item</h3>
+        <form method="POST" action="{{ url_for('report_found') }}" enctype="multipart/form-data">
+            <input type="text" name="name" class="form-control mb-2" placeholder="Item Name" required>
+            <textarea name="description" class="form-control mb-2" placeholder="Description" required></textarea>
+            <input type="file" name="photo" class="form-control mb-2" accept="image/*">
+            <button type="submit" class="btn btn-success mb-3">Submit Found Item</button>
+        </form>
+
+        <h4>All Found Items</h4>
+        {% for item in found_items %}
+            <div class="card mb-2 p-2">
+                <strong>{{ item['name'] }}</strong> <br>
+                <p>{{ item['description'] }}</p>
+                {% if item['photo'] %}
+                    <img src="{{ url_for('static', filename='uploads/'+item['photo']) }}" width="200">
+                {% endif %}
+                {% if item['claimed'] %}
+                    <small>Claimed by {{ item['claimed_by'] }}</small>
+                {% else %}
+                    <a href="{{ url_for('claim', item_id=item['id']) }}" class="btn btn-sm btn-warning">Claim</a>
+                {% endif %}
+            </div>
+        {% endfor %}
+    </div>
+</div>
+
+</body>
+</html>
+
