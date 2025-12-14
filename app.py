@@ -2,6 +2,7 @@ from flask import Flask, render_template, request, redirect, url_for, flash
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.utils import secure_filename
 from datetime import datetime
 import os
 
@@ -10,8 +11,15 @@ app.secret_key = 'your_secret_key'
 
 # SQLite configuration
 basedir = os.path.abspath(os.path.dirname(__file__))
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'instance', 'lostnfound.db')
+db_path = os.path.join(basedir, 'instance', 'lostnfound.db')
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + db_path
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+# Upload folder configuration
+UPLOAD_FOLDER = os.path.join(basedir, 'static', 'uploads')
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 
 db = SQLAlchemy(app)
 login_manager = LoginManager()
@@ -19,7 +27,6 @@ login_manager.init_app(app)
 login_manager.login_view = 'login'
 
 # ------------------ Models ------------------
-
 class User(db.Model, UserMixin):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(150), unique=True, nullable=False)
@@ -29,6 +36,7 @@ class FoundItem(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(200), nullable=False)
     description = db.Column(db.Text, nullable=True)
+    image = db.Column(db.String(200), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
 
@@ -36,17 +44,28 @@ class MissingItem(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(200), nullable=False)
     description = db.Column(db.Text, nullable=True)
+    image = db.Column(db.String(200), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
 
 # ------------------ Login Manager ------------------
-
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-# ------------------ Routes ------------------
+# ------------------ Helper Functions ------------------
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
+def save_file(file):
+    if file and allowed_file(file.filename):
+        filename = secure_filename(file.filename)
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(filepath)
+        return filename
+    return None
+
+# ------------------ Routes ------------------
 @app.route('/')
 def index():
     found_items = FoundItem.query.order_by(FoundItem.created_at.desc()).all()
@@ -103,7 +122,9 @@ def add_found():
     if request.method == 'POST':
         name = request.form['name']
         description = request.form['description']
-        item = FoundItem(name=name, description=description, user_id=current_user.id)
+        file = request.files.get('image')
+        image_filename = save_file(file)
+        item = FoundItem(name=name, description=description, image=image_filename, user_id=current_user.id)
         db.session.add(item)
         db.session.commit()
         flash("Found item added!")
@@ -116,7 +137,9 @@ def add_missing():
     if request.method == 'POST':
         name = request.form['name']
         description = request.form['description']
-        item = MissingItem(name=name, description=description, user_id=current_user.id)
+        file = request.files.get('image')
+        image_filename = save_file(file)
+        item = MissingItem(name=name, description=description, image=image_filename, user_id=current_user.id)
         db.session.add(item)
         db.session.commit()
         flash("Missing item added!")
@@ -124,11 +147,9 @@ def add_missing():
     return render_template('add_missing.html')
 
 # ------------------ Run App ------------------
-
 if __name__ == '__main__':
-    # Ensure instance folder exists
     os.makedirs(os.path.join(basedir, 'instance'), exist_ok=True)
-    # Create all tables
+    os.makedirs(UPLOAD_FOLDER, exist_ok=True)
     with app.app_context():
         db.create_all()
     app.run(debug=True)
