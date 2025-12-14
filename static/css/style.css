@@ -1,0 +1,37 @@
+body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+}
+nav {
+    background: #333;
+    padding: 1rem;
+}
+nav a {
+    color: white;
+    margin-right: 1rem;
+    text-decoration: none;
+}
+.container {
+    padding: 1rem;
+}
+.items-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+}
+.item-card {
+    border: 1px solid #ccc;
+    padding: 1rem;
+}
+.item-card img {
+    max-width: 100%;
+    height: auto;
+}
+.btn {
+    background: #333;
+    color: white;
+    padding: 0.5rem 1rem;
+    text-decoration: none;
+}
+

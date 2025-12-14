@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Post a Found Item</h2>
+<form method="POST" enctype="multipart/form-data">
+    <input type="text" name="name" placeholder="Item name" required><br>
+    <textarea name="description" placeholder="Description"></textarea><br>
+    <input type="file" name="image" accept="image/*"><br>
+    <button type="submit">Post Item</button>
+</form>
+{% endblock %}
+

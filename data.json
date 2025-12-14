@@ -1,0 +1,11 @@
+{
+    "users": [
+        {
+            "id": 1,
+            "username": "josedemocritus",
+            "password_hash": "scrypt:32768:8:1$Aygx6O2Z1bYCIA6d$8728b878aea096ba32318916e30be2a68755fca1a1b36201657cd635707ad12e3c39fd60d4b3e7b2ef0720990b4d6d42ace543048d36e7f447cdb5510ddb5b94"
+        }
+    ],
+    "found_items": [],
+    "claimed_items": []
+}
