@@ -2,19 +2,23 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Lost and Found</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/normalize/8.0.1/normalize.min.css">
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: auto; padding: 20px; }
+        nav a { margin-right: 10px; }
+        img { max-width: 100%; height: auto; }
+        .item { border: 1px solid #ddd; padding: 10px; margin-bottom: 10px; }
+    </style>
 </head>
 <body>
     <nav>
         <a href="{{ url_for('index') }}">Home</a>
-        <a href="{{ url_for('items') }}">All Items</a>
-        <a href="{{ url_for('post_item') }}">Post Item</a>
+        <a href="{{ url_for('submit') }}">Submit Found Item</a>
     </nav>
-    <div class="container">
-        {% block content %}{% endblock %}
-    </div>
+    <hr>
+    {% block content %}{% endblock %}
 </body>
 </html>
 
