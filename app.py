@@ -1,156 +1,279 @@
-from flask import Flask, render_template, request, redirect, url_for, flash
+import os
+import uuid
+from datetime import datetime
+from flask import Flask, render_template, redirect, url_for, request, flash, abort, jsonify
 from flask_sqlalchemy import SQLAlchemy
-from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
+from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
-from datetime import datetime
-import os
+import openai
 
+# ===================== APP SETUP =====================
 app = Flask(__name__)
-app.secret_key = 'your_secret_key'
+app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-secret")
 
-# SQLite configuration
-basedir = os.path.abspath(os.path.dirname(__file__))
-db_path = os.path.join(basedir, 'instance', 'lostnfound.db')
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + db_path
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+# ===================== DATABASE =====================
+DATA_DIR = "/tmp"
+os.makedirs(DATA_DIR, exist_ok=True)
+app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{DATA_DIR}/lost_and_found.db"
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
-# Upload folder configuration
-UPLOAD_FOLDER = os.path.join(basedir, 'static', 'uploads')
+# ===================== UPLOADS =====================
+UPLOAD_FOLDER = os.path.join("static", "uploads")
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
+app.config["MAX_CONTENT_LENGTH"] = 2 * 1024 * 1024  # 2MB
 
+ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "webp"}
+
+# ===================== EXTENSIONS =====================
 db = SQLAlchemy(app)
-login_manager = LoginManager()
-login_manager.init_app(app)
-login_manager.login_view = 'login'
+login_manager = LoginManager(app)
+login_manager.login_view = "login"
 
-# ------------------ Models ------------------
-class User(db.Model, UserMixin):
+# ===================== HELPERS =====================
+def allowed_file(filename):
+    return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
+
+# ===================== MODELS =====================
+class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(150), unique=True, nullable=False)
+    email = db.Column(db.String(120), unique=True, nullable=False)
     password = db.Column(db.String(200), nullable=False)
+    is_admin = db.Column(db.Boolean, default=False)
 
-class FoundItem(db.Model):
+class Item(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(200), nullable=False)
-    description = db.Column(db.Text, nullable=True)
-    image = db.Column(db.String(200), nullable=True)
+    title = db.Column(db.String(100), nullable=False)
+    description = db.Column(db.Text)
+    location = db.Column(db.String(100))
+    category = db.Column(db.String(50))
+    status = db.Column(db.String(10))  # Lost / Found
+    contact = db.Column(db.String(100))
+    image = db.Column(db.String(200))
+    approved = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"))
 
-class MissingItem(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(200), nullable=False)
-    description = db.Column(db.Text, nullable=True)
-    image = db.Column(db.String(200), nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
-
-# ------------------ Login Manager ------------------
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-# ------------------ Helper Functions ------------------
-def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+# ===================== TEMPLATE FILTER =====================
+@app.template_filter('formatdatetime')
+def format_datetime(value, format="%b %d, %Y %I:%M %p"):
+    if value is None:
+        return ""
+    return value.strftime(format)
 
-def save_file(file):
-    if file and allowed_file(file.filename):
-        filename = secure_filename(file.filename)
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        file.save(filepath)
-        return filename
-    return None
-
-# ------------------ Routes ------------------
-@app.route('/')
+# ===================== ROUTES =====================
+@app.route("/")
 def index():
-    found_items = FoundItem.query.order_by(FoundItem.created_at.desc()).all()
-    missing_items = MissingItem.query.order_by(MissingItem.created_at.desc()).all()
-    return render_template('index.html', found_items=found_items, missing_items=missing_items)
+    items = Item.query.filter_by(approved=True).order_by(Item.created_at.desc()).all()
+    return render_template("index.html", items=items)
 
-@app.route('/signup', methods=['GET', 'POST'])
-def signup():
-    if request.method == 'POST':
-        username = request.form['username']
-        password = request.form['password']
-        if User.query.filter_by(username=username).first():
-            flash("Username already exists.")
-            return redirect(url_for('signup'))
-
-        hashed_password = generate_password_hash(password)
-        new_user = User(username=username, password=hashed_password)
-        db.session.add(new_user)
+# ---------------- AUTH ----------------
+@app.route("/register", methods=["GET", "POST"])
+def register():
+    if request.method == "POST":
+        email = request.form["email"]
+        password = request.form["password"]
+        if User.query.filter_by(email=email).first():
+            flash("Email already exists", "error")
+            return redirect(url_for("register"))
+        user = User(email=email, password=generate_password_hash(password))
+        db.session.add(user)
         db.session.commit()
-        flash("Account created! Please login.")
-        return redirect(url_for('login'))
-    return render_template('signup.html')
+        flash("Account created. Please log in.", "success")
+        return redirect(url_for("login"))
+    return render_template("register.html")
 
-@app.route('/login', methods=['GET', 'POST'])
+@app.route("/login", methods=["GET", "POST"])
 def login():
-    if request.method == 'POST':
-        username = request.form['username']
-        password = request.form['password']
-        user = User.query.filter_by(username=username).first()
-        if not user or not check_password_hash(user.password, password):
-            flash("Incorrect username or password.")
-            return redirect(url_for('login'))
-        login_user(user)
-        return redirect(url_for('dashboard'))
-    return render_template('login.html')
+    if request.method == "POST":
+        user = User.query.filter_by(email=request.form["email"]).first()
+        if user and check_password_hash(user.password, request.form["password"]):
+            login_user(user)
+            return redirect(url_for("index"))
+        flash("Invalid email or password", "error")
+    return render_template("login.html")
 
-@app.route('/dashboard')
-@login_required
-def dashboard():
-    user_found = FoundItem.query.filter_by(user_id=current_user.id).order_by(FoundItem.created_at.desc()).all()
-    user_missing = MissingItem.query.filter_by(user_id=current_user.id).order_by(MissingItem.created_at.desc()).all()
-    return render_template('dashboard.html', user_found=user_found, user_missing=user_missing)
-
-@app.route('/logout')
+@app.route("/logout")
 @login_required
 def logout():
     logout_user()
-    flash("You have been logged out.")
-    return redirect(url_for('login'))
+    return redirect(url_for("index"))
 
-@app.route('/add_found', methods=['GET', 'POST'])
+# ---------------- ITEMS ----------------
+@app.route("/post", methods=["GET", "POST"])
 @login_required
-def add_found():
-    if request.method == 'POST':
-        name = request.form['name']
-        description = request.form['description']
-        file = request.files.get('image')
-        image_filename = save_file(file)
-        item = FoundItem(name=name, description=description, image=image_filename, user_id=current_user.id)
+def post_item():
+    if request.method == "POST":
+        file = request.files.get("image")
+        filename = None
+        if file and allowed_file(file.filename):
+            ext = file.filename.rsplit(".", 1)[1].lower()
+            filename = f"{uuid.uuid4().hex}.{ext}"
+            file.save(os.path.join(app.config["UPLOAD_FOLDER"], filename))
+
+        item = Item(
+            title=request.form["title"],
+            description=request.form.get("description"),
+            location=request.form.get("location"),
+            category=request.form.get("category"),
+            status=request.form["status"],
+            contact=request.form.get("contact"),
+            image=filename,
+            user_id=current_user.id
+        )
         db.session.add(item)
         db.session.commit()
-        flash("Found item added!")
-        return redirect(url_for('dashboard'))
-    return render_template('add_found.html')
+        flash("Item submitted for admin approval.", "success")
+        return redirect(url_for("my_items"))
+    return render_template("post_item.html")
 
-@app.route('/add_missing', methods=['GET', 'POST'])
+@app.route("/my-items")
 @login_required
-def add_missing():
-    if request.method == 'POST':
-        name = request.form['name']
-        description = request.form['description']
-        file = request.files.get('image')
-        image_filename = save_file(file)
-        item = MissingItem(name=name, description=description, image=image_filename, user_id=current_user.id)
-        db.session.add(item)
-        db.session.commit()
-        flash("Missing item added!")
-        return redirect(url_for('dashboard'))
-    return render_template('add_missing.html')
+def my_items():
+    items = Item.query.filter_by(user_id=current_user.id).order_by(Item.created_at.desc()).all()
+    return render_template("my_items.html", items=items)
 
-# ------------------ Run App ------------------
-if __name__ == '__main__':
-    os.makedirs(os.path.join(basedir, 'instance'), exist_ok=True)
-    os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-    with app.app_context():
-        db.create_all()
-    app.run(debug=True)
+@app.route("/item/<int:item_id>")
+@login_required
+def item_detail(item_id):
+    item = Item.query.get_or_404(item_id)
+    if not item.approved and item.user_id != current_user.id and not current_user.is_admin:
+        abort(404)
+    return render_template("item_detail.html", item=item)
+
+@app.route("/edit/<int:item_id>", methods=["GET", "POST"])
+@login_required
+def edit_item(item_id):
+    item = Item.query.get_or_404(item_id)
+    if item.user_id != current_user.id:
+        abort(403)
+    if request.method == "POST":
+        item.title = request.form["title"]
+        item.description = request.form.get("description")
+        item.location = request.form.get("location")
+        item.category = request.form.get("category")
+        item.status = request.form["status"]
+        item.contact = request.form.get("contact")
+
+        file = request.files.get("image")
+        if file and allowed_file(file.filename):
+            if item.image:
+                old_path = os.path.join(app.config["UPLOAD_FOLDER"], item.image)
+                if os.path.exists(old_path):
+                    os.remove(old_path)
+            ext = file.filename.rsplit(".", 1)[1].lower()
+            item.image = f"{uuid.uuid4().hex}.{ext}"
+            file.save(os.path.join(app.config["UPLOAD_FOLDER"], item.image))
+        elif request.form.get("remove_image") == "yes" and item.image:
+            old_path = os.path.join(app.config["UPLOAD_FOLDER"], item.image)
+            if os.path.exists(old_path):
+                os.remove(old_path)
+            item.image = None
+
+        item.approved = False
+        db.session.commit()
+        flash("Item updated. Pending admin approval.", "success")
+        return redirect(url_for("my_items"))
+
+    return render_template("edit_item.html", item=item)
+
+@app.route("/delete/<int:item_id>", methods=["POST"])
+@login_required
+def delete_item(item_id):
+    item = Item.query.get_or_404(item_id)
+    if item.user_id != current_user.id:
+        abort(403)
+    if item.image:
+        path = os.path.join(app.config["UPLOAD_FOLDER"], item.image)
+        if os.path.exists(path):
+            os.remove(path)
+    db.session.delete(item)
+    db.session.commit()
+    flash("Item deleted successfully.", "success")
+    return redirect(url_for("my_items"))
+
+# ---------------- ADMIN ----------------
+@app.route("/admin")
+@login_required
+def admin():
+    if not current_user.is_admin:
+        abort(403)
+    items = Item.query.filter_by(approved=False).order_by(Item.created_at.desc()).all()
+    return render_template("admin.html", items=items)
+
+@app.route("/approve/<int:item_id>")
+@login_required
+def approve(item_id):
+    if not current_user.is_admin:
+        abort(403)
+    item = Item.query.get_or_404(item_id)
+    item.approved = True
+    db.session.commit()
+    flash("Item approved.", "success")
+    return redirect(url_for("admin"))
+
+@app.route("/admin/delete/<int:item_id>", methods=["POST"])
+@login_required
+def admin_delete_item(item_id):
+    if not current_user.is_admin:
+        abort(403)
+    item = Item.query.get_or_404(item_id)
+    if item.image:
+        path = os.path.join(app.config["UPLOAD_FOLDER"], item.image)
+        if os.path.exists(path):
+            os.remove(path)
+    db.session.delete(item)
+    db.session.commit()
+    flash("Item deleted by admin.", "success")
+    return redirect(url_for("admin"))
+
+# ================= AI CHATBOT =================
+# Load OpenAI API key from environment variable
+openai.api_key = os.environ.get("OPENAI_API_KEY")
+
+@app.route("/chat", methods=["POST"])
+def chat():
+    user_message = request.json.get("message")
+    if not user_message:
+        return jsonify({"error": "No message provided"}), 400
+
+    try:
+        response = openai.ChatCompletion.create(
+            model="gpt-5-mini",
+            messages=[
+                {"role": "system", "content": (
+                    "You are an AI assistant for a lost-and-found real-time detection system. "
+                    "Explain features, guide users to report lost/found items, "
+                    "and clarify how the system monitors unattended personal belongings."
+                )},
+                {"role": "user", "content": user_message}
+            ]
+        )
+        reply = response.choices[0].message["content"]
+        return jsonify({"reply": reply})
+    except openai.error.RateLimitError:
+        return jsonify({"reply": "Sorry, the AI service is temporarily unavailable due to quota limits. Please try again later."})
+    except Exception as e:
+        return jsonify({"reply": f"An error occurred: {str(e)}"})
+
+# ===================== INIT =====================
+with app.app_context():
+    db.create_all()
+    if not User.query.filter_by(email="admin@student.edu").first():
+        admin = User(
+            email="admin@student.edu",
+            password=generate_password_hash("admin123"),
+            is_admin=True
+        )
+        db.session.add(admin)
+        db.session.commit()
+
+# ===================== RUN =====================
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
 

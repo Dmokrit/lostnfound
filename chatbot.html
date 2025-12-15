@@ -1,0 +1,64 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<h2 style="text-align:center; margin-bottom:20px;">AI Assistant</h2>
+
+<div id="chatbot" style="
+    max-width:500px;
+    margin:0 auto;
+    border:1px solid #ccc;
+    border-radius:10px;
+    padding:15px;
+    display:flex;
+    flex-direction:column;
+    height:400px;
+">
+    <div id="messages" style="flex:1; overflow-y:auto; margin-bottom:10px;"></div>
+    <div style="display:flex; gap:5px;">
+        <input type="text" id="userInput" placeholder="Ask about the system..." style="flex:1; padding:8px; border-radius:6px; border:1px solid #ccc;">
+        <button id="sendBtn" style="padding:8px 12px; border-radius:6px; background:#007bff; color:white; border:none; cursor:pointer;">Send</button>
+    </div>
+</div>
+
+<script>
+const messagesDiv = document.getElementById('messages');
+const input = document.getElementById('userInput');
+const sendBtn = document.getElementById('sendBtn');
+
+function addMessage(sender, text){
+    const msg = document.createElement('div');
+    msg.style.marginBottom = '8px';
+    msg.innerHTML = `<b>${sender}:</b> ${text}`;
+    messagesDiv.appendChild(msg);
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+}
+
+sendBtn.onclick = async () => {
+    const message = input.value.trim();
+    if(!message) return;
+    addMessage("You", message);
+    input.value = '';
+
+    try {
+        const res = await fetch('/chat', {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({message})
+        });
+        const data = await res.json();
+        if(data.reply){
+            addMessage("AI", data.reply);
+        } else if(data.error){
+            addMessage("AI", "Error: " + data.error);
+        }
+    } catch(err){
+        addMessage("AI", "Connection error.");
+    }
+};
+
+input.addEventListener("keypress", function(e){
+    if(e.key === "Enter") sendBtn.click();
+});
+</script>
+{% endblock %}
+

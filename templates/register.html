@@ -2,7 +2,7 @@
 
 {% block content %}
 <div class="card" style="max-width: 400px; margin: 40px auto; padding: 20px;">
-    <h2 style="text-align: center; margin-bottom: 25px;">Login</h2>
+    <h2 style="text-align: center; margin-bottom: 25px;">Register</h2>
 
     <form method="post">
         <label for="email">Email</label>
@@ -11,11 +11,11 @@
         <label for="password">Password</label>
         <input type="password" name="password" id="password" placeholder="Enter your password" required>
 
-        <button type="submit" class="btn" style="width: 100%; margin-top: 10px;">Login</button>
+        <button type="submit" class="btn" style="width: 100%; margin-top: 10px;">Create Account</button>
     </form>
 
     <p style="text-align: center; margin-top: 15px; font-size: 0.9em;">
-        Don't have an account? <a href="{{ url_for('register') }}">Register</a>
+        Already have an account? <a href="{{ url_for('login') }}">Login</a>
     </p>
 </div>
 {% endblock %}
