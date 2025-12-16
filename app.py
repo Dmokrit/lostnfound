@@ -7,17 +7,15 @@ from flask_migrate import Migrate
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
-import openai
+import requests
 
 # ===================== APP SETUP =====================
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-secret")
 
 # ===================== DATABASE =====================
-# Use Render Postgres if DATABASE_URL exists, otherwise fallback to local SQLite
 DATABASE_URL = os.environ.get("DATABASE_URL")
 if DATABASE_URL:
-    # Fix for Render Postgres: SQLAlchemy expects 'postgresql://' not 'postgres://'
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
     app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE_URL
 else:
@@ -241,33 +239,56 @@ def admin_delete_item(item_id):
     flash("Item deleted by admin.", "success")
     return redirect(url_for("admin"))
 
-# ================= AI CHATBOT =================
-openai.api_key = os.environ.get("OPENAI_API_KEY")
+# ================= HUGGING FACE CHATBOT =================
+HF_API_KEY = os.environ.get("HF_API_KEY")
+HF_MODEL = "google/flan-t5-large"
 
 @app.route("/chat", methods=["POST"])
 def chat():
-    user_message = request.json.get("message")
+    data = request.get_json()
+    user_message = data.get("message")
+
     if not user_message:
-        return jsonify({"error": "No message provided"}), 400
+        return jsonify({"reply": "No message received."}), 400
+
+    prompt = (
+        "You are an assistant for a lost-and-found system.\n"
+        "Help users report lost or found items and explain how the system works.\n\n"
+        f"User: {user_message}\nAssistant:"
+    )
+
+    headers = {
+        "Authorization": f"Bearer {HF_API_KEY}"
+    }
+
+    payload = {
+        "inputs": prompt,
+        "parameters": {
+            "max_new_tokens": 150,
+            "temperature": 0.7
+        }
+    }
 
     try:
-        response = openai.ChatCompletion.create(
-            model="gpt-5-mini",
-            messages=[
-                {"role": "system", "content": (
-                    "You are an AI assistant for a lost-and-found real-time detection system. "
-                    "Explain features, guide users to report lost/found items, "
-                    "and clarify how the system monitors unattended personal belongings."
-                )},
-                {"role": "user", "content": user_message}
-            ]
+        response = requests.post(
+            f"https://api-inference.huggingface.co/models/{HF_MODEL}",
+            headers=headers,
+            json=payload,
+            timeout=30
         )
-        reply = response.choices[0].message["content"]
+
+        result = response.json()
+
+        if isinstance(result, list):
+            reply = result[0].get("generated_text", "")
+            reply = reply.replace(prompt, "").strip()
+        else:
+            reply = "AI chatbot is currently unavailable."
+
         return jsonify({"reply": reply})
-    except openai.error.OpenAIError:
-        return jsonify({"reply": "Sorry, the AI service is temporarily unavailable. Please try again later."})
-    except Exception as e:
-        return jsonify({"reply": f"An error occurred: {str(e)}"})
+
+    except Exception:
+        return jsonify({"reply": "AI chatbot is currently unavailable."})
 
 # ===================== INIT =====================
 with app.app_context():
