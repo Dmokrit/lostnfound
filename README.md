@@ -1,5 +1,7 @@
 # lostnfoundproject
 
+FOR LINUX USERS
+~~~
 RUN IN TERMINAL AND COPY&PASTE THE FOLLOWING:
 
 mkdir cs111
@@ -17,3 +19,4 @@ python -m venv venv
 source venv/bin/activate.fish
 
 python app.py
+~~~
