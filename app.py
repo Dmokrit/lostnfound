@@ -239,18 +239,19 @@ def admin_delete_item(item_id):
     flash("Item deleted by admin.", "success")
     return redirect(url_for("admin"))
 
-# ================= HUGGING FACE CHATBOT WITH FALLBACK =================
+# ================= HUGGING FACE CHATBOT (Render-safe) =================
 HF_API_KEY = os.environ.get("HF_API_KEY")
 HF_MODEL = "google/gemma-2-2b-it"
 
 @app.route("/chat", methods=["POST"])
 def chat():
-    if not HF_API_KEY:
-        return jsonify({"reply": "AI API key is not configured. Please contact admin."})
+    user_message = request.json.get("message", "").strip()
 
-    user_message = request.json.get("message", "")
     if not user_message:
-        return jsonify({"reply": "No message provided."}), 400
+        return jsonify({"reply": "Please type a message before sending."}), 400
+
+    if not HF_API_KEY:
+        return jsonify({"reply": "AI chatbot is temporarily unavailable. (API key not configured)"})
 
     headers = {"Authorization": f"Bearer {HF_API_KEY}"}
     payload = {
@@ -274,10 +275,19 @@ def chat():
         reply = result.get("choices", [{}])[0].get("message", {}).get("content")
         if not reply:
             reply = "AI chatbot is temporarily unavailable. Please try again later."
+    except requests.exceptions.Timeout:
+        reply = "AI chatbot is taking too long to respond. Please try again."
+    except requests.exceptions.RequestException as e:
+        reply = f"AI chatbot encountered an error: {str(e)}"
     except Exception:
         reply = "AI chatbot is temporarily unavailable. Please try again later."
 
     return jsonify({"reply": reply})
+
+# ---------------- Test Route for HF_API_KEY ----------------
+@app.route("/test-hf")
+def test_hf():
+    return f"HF_API_KEY is {'set' if HF_API_KEY else 'NOT set'}"
 
 # ===================== INIT =====================
 with app.app_context():
