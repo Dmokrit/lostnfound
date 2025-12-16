@@ -6,9 +6,9 @@ mkdir cs111
 
 cd cs111/
 
-git clone https://github.com/Dmokrit/cs111lostnfoundproject.git
+git clone https://github.com/Dmokrit/lostnfound.git
 
-cd cs111/cs111lostnfoundproject
+cd cs111/lostnfound
 
 pip install -r requirements.txt
 
