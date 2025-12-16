@@ -1,12 +1,13 @@
 # lostnfoundproject
 
-Install Git
-
-For Windows:
-~~~
-winget install --id Git.Git -e --source winget
-~~~
-
+Systems used:
+```
+Python
+Git
+Kitty Terminal
+Vim
+Arch Linux
+```
 
 RUN IN TERMINAL AND COPY&PASTE THE FOLLOWING:
 ~~~
