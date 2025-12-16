@@ -3,6 +3,7 @@ import uuid
 from datetime import datetime
 from flask import Flask, render_template, redirect, url_for, request, flash, abort, jsonify
 from flask_sqlalchemy import SQLAlchemy
+from flask_migrate import Migrate
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
@@ -13,12 +14,17 @@ app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-secret")
 
 # ===================== DATABASE =====================
-# Use PostgreSQL on Render if DATABASE_URL is set, otherwise fallback to local SQLite
-DATA_DIR = "/tmp"
-os.makedirs(DATA_DIR, exist_ok=True)
-app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get(
-    "DATABASE_URL", f"sqlite:///{DATA_DIR}/lost_and_found.db"
-)
+# Use Render Postgres if DATABASE_URL exists, otherwise fallback to local SQLite
+DATABASE_URL = os.environ.get("DATABASE_URL")
+if DATABASE_URL:
+    # Fix for Render Postgres: SQLAlchemy expects 'postgresql://' not 'postgres://'
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+    app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE_URL
+else:
+    DATA_DIR = "/tmp"
+    os.makedirs(DATA_DIR, exist_ok=True)
+    app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{DATA_DIR}/lost_and_found.db"
+
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 # ===================== UPLOADS =====================
@@ -30,6 +36,7 @@ ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "webp"}
 
 # ===================== EXTENSIONS =====================
 db = SQLAlchemy(app)
+migrate = Migrate(app, db)
 login_manager = LoginManager(app)
 login_manager.login_view = "login"
 
@@ -68,56 +75,13 @@ def format_datetime(value, format="%b %d, %Y %I:%M %p"):
         return ""
     return value.strftime(format)
 
-# ===================== AI CHATBOT =====================
-# Load OpenAI API key from environment variable
-openai.api_key = os.environ.get("OPENAI_API_KEY")
-
-@app.route("/chat", methods=["POST"])
-def chat():
-    user_message = request.json.get("message")
-    if not user_message:
-        return jsonify({"error": "No message provided"}), 400
-
-    try:
-        response = openai.ChatCompletion.create(
-            model="gpt-5-mini",
-            messages=[
-                {"role": "system", "content": (
-                    "You are an AI assistant for a lost-and-found real-time detection system. "
-                    "Explain features, guide users to report lost/found items, "
-                    "and clarify how the system monitors unattended personal belongings."
-                )},
-                {"role": "user", "content": user_message}
-            ]
-        )
-        reply = response.choices[0].message["content"]
-        return jsonify({"reply": reply})
-    except openai.error.RateLimitError:
-        return jsonify({"reply": "Sorry, the AI service is temporarily unavailable due to quota limits. Please try again later."})
-    except Exception as e:
-        return jsonify({"reply": f"An error occurred: {str(e)}"})
-
-# ===================== INIT =====================
-with app.app_context():
-    db.create_all()
-    # Automatic admin creation
-    if not User.query.filter_by(email="admin@student.edu").first():
-        admin = User(
-            email="admin@student.edu",
-            password=generate_password_hash("admin123"),
-            is_admin=True
-        )
-        db.session.add(admin)
-        db.session.commit()
-
 # ===================== ROUTES =====================
-# ---------- INDEX ----------
 @app.route("/")
 def index():
     items = Item.query.filter_by(approved=True).order_by(Item.created_at.desc()).all()
     return render_template("index.html", items=items)
 
-# ---------- AUTH ----------
+# ---------------- AUTH ----------------
 @app.route("/register", methods=["GET", "POST"])
 def register():
     if request.method == "POST":
@@ -149,7 +113,7 @@ def logout():
     logout_user()
     return redirect(url_for("index"))
 
-# ---------- ITEMS ----------
+# ---------------- ITEMS ----------------
 @app.route("/post", methods=["GET", "POST"])
 @login_required
 def post_item():
@@ -242,7 +206,7 @@ def delete_item(item_id):
     flash("Item deleted successfully.", "success")
     return redirect(url_for("my_items"))
 
-# ---------- ADMIN ----------
+# ---------------- ADMIN ----------------
 @app.route("/admin")
 @login_required
 def admin():
@@ -276,6 +240,46 @@ def admin_delete_item(item_id):
     db.session.commit()
     flash("Item deleted by admin.", "success")
     return redirect(url_for("admin"))
+
+# ================= AI CHATBOT =================
+openai.api_key = os.environ.get("OPENAI_API_KEY")
+
+@app.route("/chat", methods=["POST"])
+def chat():
+    user_message = request.json.get("message")
+    if not user_message:
+        return jsonify({"error": "No message provided"}), 400
+
+    try:
+        response = openai.ChatCompletion.create(
+            model="gpt-5-mini",
+            messages=[
+                {"role": "system", "content": (
+                    "You are an AI assistant for a lost-and-found real-time detection system. "
+                    "Explain features, guide users to report lost/found items, "
+                    "and clarify how the system monitors unattended personal belongings."
+                )},
+                {"role": "user", "content": user_message}
+            ]
+        )
+        reply = response.choices[0].message["content"]
+        return jsonify({"reply": reply})
+    except openai.error.OpenAIError:
+        return jsonify({"reply": "Sorry, the AI service is temporarily unavailable. Please try again later."})
+    except Exception as e:
+        return jsonify({"reply": f"An error occurred: {str(e)}"})
+
+# ===================== INIT =====================
+with app.app_context():
+    db.create_all()
+    if not User.query.filter_by(email="admin@student.edu").first():
+        admin = User(
+            email="admin@student.edu",
+            password=generate_password_hash("admin123"),
+            is_admin=True
+        )
+        db.session.add(admin)
+        db.session.commit()
 
 # ===================== RUN =====================
 if __name__ == "__main__":
