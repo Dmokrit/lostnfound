@@ -239,12 +239,15 @@ def admin_delete_item(item_id):
     flash("Item deleted by admin.", "success")
     return redirect(url_for("admin"))
 
-# ================= HUGGING FACE CHATBOT =================
+# ================= HUGGING FACE CHATBOT WITH FALLBACK =================
 HF_API_KEY = os.environ.get("HF_API_KEY")
 HF_MODEL = "google/gemma-2-2b-it"
 
 @app.route("/chat", methods=["POST"])
 def chat():
+    if not HF_API_KEY:
+        return jsonify({"reply": "AI API key is not configured. Please contact admin."})
+
     user_message = request.json.get("message", "")
     if not user_message:
         return jsonify({"reply": "No message provided."}), 400
@@ -268,9 +271,11 @@ def chat():
             timeout=30
         )
         result = response.json()
-        reply = result.get("choices", [{}])[0].get("message", {}).get("content", "AI chatbot is currently unavailable.")
+        reply = result.get("choices", [{}])[0].get("message", {}).get("content")
+        if not reply:
+            reply = "AI chatbot is temporarily unavailable. Please try again later."
     except Exception:
-        reply = "AI chatbot is currently unavailable."
+        reply = "AI chatbot is temporarily unavailable. Please try again later."
 
     return jsonify({"reply": reply})
 
