@@ -241,54 +241,38 @@ def admin_delete_item(item_id):
 
 # ================= HUGGING FACE CHATBOT =================
 HF_API_KEY = os.environ.get("HF_API_KEY")
-HF_MODEL = "google/flan-t5-large"
+HF_MODEL = "google/gemma-2-2b-it"
 
 @app.route("/chat", methods=["POST"])
 def chat():
-    data = request.get_json()
-    user_message = data.get("message")
-
+    user_message = request.json.get("message", "")
     if not user_message:
-        return jsonify({"reply": "No message received."}), 400
+        return jsonify({"reply": "No message provided."}), 400
 
-    prompt = (
-        "You are an assistant for a lost-and-found system.\n"
-        "Help users report lost or found items and explain how the system works.\n\n"
-        f"User: {user_message}\nAssistant:"
-    )
-
-    headers = {
-        "Authorization": f"Bearer {HF_API_KEY}"
-    }
-
+    headers = {"Authorization": f"Bearer {HF_API_KEY}"}
     payload = {
-        "inputs": prompt,
-        "parameters": {
-            "max_new_tokens": 150,
-            "temperature": 0.7
-        }
+        "model": HF_MODEL,
+        "messages": [
+            {"role": "system", "content": "You are an AI assistant for a lost-and-found system."},
+            {"role": "user", "content": user_message}
+        ],
+        "max_new_tokens": 150,
+        "temperature": 0.7
     }
 
     try:
         response = requests.post(
-            f"https://api-inference.huggingface.co/models/{HF_MODEL}",
+            "https://router.huggingface.co/v1/chat/completions",
             headers=headers,
             json=payload,
             timeout=30
         )
-
         result = response.json()
-
-        if isinstance(result, list):
-            reply = result[0].get("generated_text", "")
-            reply = reply.replace(prompt, "").strip()
-        else:
-            reply = "AI chatbot is currently unavailable."
-
-        return jsonify({"reply": reply})
-
+        reply = result.get("choices", [{}])[0].get("message", {}).get("content", "AI chatbot is currently unavailable.")
     except Exception:
-        return jsonify({"reply": "AI chatbot is currently unavailable."})
+        reply = "AI chatbot is currently unavailable."
+
+    return jsonify({"reply": reply})
 
 # ===================== INIT =====================
 with app.app_context():
