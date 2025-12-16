@@ -1,9 +1,15 @@
 # lostnfoundproject
 
-FOR LINUX USERS
-~~~
-RUN IN TERMINAL AND COPY&PASTE THE FOLLOWING:
+Install Git
 
+For Windows:
+~~~
+winget install --id Git.Git -e --source winget
+~~~
+
+
+RUN IN TERMINAL AND COPY&PASTE THE FOLLOWING:
+~~~
 mkdir cs111
 
 cd cs111/
